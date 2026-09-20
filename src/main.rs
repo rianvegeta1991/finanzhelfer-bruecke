@@ -245,6 +245,7 @@ async fn dienst(konfig: Konfig) -> Result<()> {
         .route("/umsaetze", get(umsaetze))
         .route("/positionen", get(positionen))
         .route("/status", get(status))
+        .route("/selbst", get(selbst))
         .layer(cors)
         .with_state(lage.clone());
 
@@ -398,6 +399,68 @@ async fn positionen(
         raus.extend(bestand.positionen.iter().cloned());
     }
     Ok(Json(raus))
+}
+
+/// Was die Brücke über sich selbst verrät, damit die App sich allein einrichtet.
+#[derive(Serialize)]
+struct SelbstAuskunft {
+    token: String,
+    konten: Vec<SelbstKonto>,
+    depots: Vec<SelbstKonto>,
+}
+
+#[derive(Serialize)]
+struct SelbstKonto {
+    #[serde(rename = "ref")]
+    kennung: String,
+    name: String,
+    bank: String,
+    art: String,
+}
+
+/// `GET /selbst` – **nur für die App, die diese Brücke selbst ausliefert.**
+///
+/// Gibt das Token heraus, damit man es nicht von Hand abtippen muss, und
+/// dazu die eingerichteten Konten, damit die App sie selbst anlegen kann.
+///
+/// Deshalb ohne Token, aber streng auf dieselbe Herkunft beschränkt: ein
+/// `Origin`, der nicht zum eigenen `Host` passt, bekommt nichts. Fremde
+/// Webseiten kommen ohnehin nicht an die Antwort (CORS), und wer schon auf
+/// dem Rechner Programme ausführt, könnte die config.toml auch direkt lesen.
+async fn selbst(State(lage): State<Arc<Lage>>, kopf: HeaderMap) -> Antwort<SelbstAuskunft> {
+    let host = kopf.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("");
+    if let Some(herkunft) = kopf.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        let passt = herkunft
+            .rsplit('/')
+            .next()
+            .is_some_and(|h| !host.is_empty() && h == host);
+        if !passt {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Diese Auskunft gibt es nur für die App, die diese Brücke selbst ausliefert.".into(),
+            ));
+        }
+    }
+
+    let bauen = |k: &Konto| SelbstKonto {
+        kennung: k.id.clone(),
+        name: k.name.clone(),
+        bank: k.bank.clone(),
+        art: k.art.clone(),
+    };
+    Ok(Json(SelbstAuskunft {
+        token: lage.konfig.dienst.token.clone(),
+        konten: lage.konfig.konten.iter().filter(|k| !k.ist_depot()).map(bauen).collect(),
+        // Trade Republic bedient Konto und Depot aus einem Eintrag – der
+        // taucht deshalb in beiden Listen auf.
+        depots: lage
+            .konfig
+            .konten
+            .iter()
+            .filter(|k| k.ist_depot() || k.quelle == Quelle::Pytr)
+            .map(bauen)
+            .collect(),
+    }))
 }
 
 #[derive(Serialize)]
