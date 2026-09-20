@@ -1,0 +1,106 @@
+# Finanzhelfer-Brücke – Beispielkonfiguration
+#
+# Kopiere diese Datei nach `config.toml` und trag deine Daten ein.
+# `config.toml` steht in der .gitignore und darf dort auch bleiben:
+# sie enthält Zugangsdaten.
+
+[dienst]
+# 127.0.0.1 = nur dieser Rechner. Für den Zugriff vom Handy im selben WLAN
+# stattdessen "0.0.0.0:8123" – dann aber bitte ein langes Token.
+adresse = "127.0.0.1:8123"
+
+# Frei erfunden, lang und zufällig. Genau dieses Token trägst du im
+# Finanzhelfer unter „Mehr → Automatischer Abruf" ein.
+token = "hier-eine-lange-zufaellige-zeichenkette-eintragen"
+
+# Optional: Liegt die App daneben, liefert die Brücke sie gleich mit aus.
+# Dann rufst du http://localhost:8123 auf statt der GitHub-Seite – App und
+# Brücke haben dieselbe Herkunft, und CORS spielt keine Rolle mehr.
+app_ordner = "../finanzhelfer"
+
+# Wer darf von außen fragen? Nur nötig, wenn du die App NICHT über die
+# Brücke aufrufst.
+herkunft = [
+  "http://localhost:8797",
+  "https://rianvegeta1991.github.io",
+]
+
+# Abstand zwischen zwei Abrufen. 0 schaltet den Hintergrundabgleich ab.
+abgleich_minuten = 180
+
+[fints]
+# Produkt-Registrierungsnummer der Deutschen Kreditwirtschaft.
+# Kostenlos, aber Pflicht: ohne sie weisen die meisten Banken den Zugang ab.
+# Beantragt wird sie unter https://www.hbci-zka.de/register/prod_register.htm
+produkt_id = ""
+
+
+# ───────────────────────── Girokonto bei der ING ─────────────────────────
+[[konto]]
+id = "ing-giro"              # Diese Kennung trägst du in der App beim Konto ein
+name = "Girokonto"
+bank = "ING"
+art = "giro"                 # giro | tagesgeld | bar | kreditkarte | kredit | depot
+quelle = "fints"
+blz = "50010517"             # ING, geprüft gegen das FinTS-Bankverzeichnis
+iban = "DE00500105170000000000"
+benutzer = ""                # deine ING-Zugangsnummer
+pin = ""                     # leer lassen und stattdessen FH_PIN_ING_GIRO setzen
+tage = 90                    # so weit zurück werden Umsätze geholt
+
+
+# ───────────────────── Depot bei der Commerzbank ─────────────────────
+[[konto]]
+id = "cb-depot"
+name = "Depot Commerzbank"
+bank = "Commerzbank"
+art = "depot"                # Depots tauchen nicht unter /konten auf,
+quelle = "fints"             # sondern nur unter /positionen
+blz = "50040000"
+iban = "DE00500400000000000000"
+benutzer = ""
+pin = ""                     # oder Umgebungsvariable FH_PIN_CB_DEPOT
+
+
+# ─────────────────────────── Trade Republic ───────────────────────────
+#
+# EIN Eintrag genügt für beides: Verrechnungskonto und Depot. In der App
+# trägst du „tr" sowohl beim Konto als auch beim Depot als Kennung ein.
+#
+# Vorher einmal im Terminal anmelden:
+#     python -m pytr login --store_credentials
+# Konten mit Freigabe über die TR-App zusätzlich mit --v2.
+#
+# Achtung: TRs Nutzungsbedingungen sehen automatisierten Zugriff nicht vor.
+[[konto]]
+id = "tr"
+name = "Trade Republic"
+bank = "Trade Republic"
+art = "giro"
+quelle = "pytr"
+tage = 0                     # 0 = alles holen. Nur dann stimmt der Saldo!
+# pytr_programm = "pytr"     # falls pytr.exe im PATH liegt
+# pytr_argumente = ["--v2"]  # für die Freigabe über die TR-App
+
+
+# ─────────────────────────────── Bitvavo ───────────────────────────────
+#
+# Schlüssel im Bitvavo-Konto anlegen und dabei NUR das Leserecht („View")
+# vergeben – die Brücke soll lesen können, nicht handeln.
+[[konto]]
+id = "bitvavo"
+name = "Bitvavo"
+bank = "Bitvavo"
+art = "depot"
+quelle = "bitvavo"
+schluessel = ""
+geheimnis = ""
+
+
+# ───────────────────────────── FNZ Bank ─────────────────────────────
+#
+# Die FNZ Bank (früher ebase) steht NICHT im FinTS-Bankverzeichnis und
+# bietet keinen HBCI-Zugang. Dieses Depot bleibt Handarbeit: Positionen
+# im Finanzhelfer eintragen, Kurse holt die App selbst über das
+# Börsenkürzel. Bei einem Fondsdepot ändert sich der Bestand ohnehin
+# selten – meist reicht ein Blick im Quartal.

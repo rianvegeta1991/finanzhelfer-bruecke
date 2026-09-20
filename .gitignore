@@ -1,0 +1,9 @@
+# Zugangsdaten – gehören niemals ins Repo
+config.toml
+
+# Geholte Kontodaten, FinTS-Systemkennungen, pytr-Ausgaben
+state/
+
+# Rust
+/target
+**/*.rs.bk

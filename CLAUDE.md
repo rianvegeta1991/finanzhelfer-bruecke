@@ -1,0 +1,106 @@
+# Finanzhelfer-Brücke
+
+Rust-Dienst auf dem eigenen Rechner, der für die [Finanzhelfer-App](../finanzhelfer)
+mit den Banken spricht. **Deutsch ist die Quellsprache** (Code, Kommentare, Commits).
+
+Das hier ist ein **eigenes Repo** und läuft **nicht** über GitHub Pages – es ist
+kein Web-Projekt, sondern ein Programm, das der Nutzer selbst baut und startet.
+
+## Live
+
+- **Repo:** https://github.com/rianvegeta1991/finanzhelfer-bruecke
+- Kein Deploy. `cargo build --release`, fertig.
+
+## Aufbau
+
+| Datei | Inhalt |
+|---|---|
+| `src/main.rs` | CLI, HTTP-Server, Endpunkte, Hintergrundschleife |
+| `src/konfig.rs` | `config.toml` lesen und früh prüfen |
+| `src/modell.rs` | die drei Ausgabeformen + `state/`-Ablage |
+| `src/quelle_fints.rs` | FinTS über `fints-rs` (ING, Commerzbank, Sparkassen …) |
+| `src/quelle_bitvavo.rs` | Bitvavo, offizielle API, HMAC-SHA256 |
+| `src/quelle_tr.rs` | Trade Republic über das Fremdwerkzeug `pytr` |
+
+## Die drei Endpunkte sind der Vertrag
+
+`/konten`, `/umsaetze`, `/positionen` – genau so, wie `banking.js` und `kurse.js`
+in der App sie abfragen. **Diese Formen nicht stillschweigend ändern**; sie stehen
+in beiden READMEs und im Info-Fenster der App. Wer eine Quelle ergänzt, füllt
+einen `Bestand` und ist fertig.
+
+Depots tauchen **nicht** unter `/konten` auf: die App kennt nur giro/tagesgeld/
+bar/kreditkarte/kredit als Kontoarten und würde ein Depot zu einem Girokonto
+machen. Depots kommen über `/positionen?depot=<ref>`.
+
+Ein leerer `depot`-Parameter heißt „alles" – so fragt die App, wenn beim Depot
+keine Kennung hinterlegt ist.
+
+## Abruf und Zustand
+
+Der Bankdialog läuft **nie** im HTTP-Aufruf, sondern in der Hintergrundschleife;
+die Endpunkte liefern aus `state/<konto-id>.json`. Ein FinTS-Dialog dauert
+Sekunden, und Banken begrenzen die Zugriffe.
+
+`state/` hält außerdem die **System-Kennung** je Konto. Sie ist der Grund, warum
+nicht jeder Abruf eine TAN verlangt: mit gemerkter Kennung erkennt die Bank das
+Gerät wieder (meist ~90 Tage). Sie wird **sofort nach `initiate` gesichert**,
+auch wenn der Abruf danach scheitert – sonst holt sich die Bank bei jedem
+Versuch eine neue und wird misstrauisch.
+
+## FinTS-Eigenheiten (`fints-rs` 0.2)
+
+- `Flow::initiate(...)` liefert `ChallengeInfo`. `no_tan_required == true` heißt:
+  schon angemeldet, direkt abrufen.
+- `confirm_and_fetch_opts` meldet **„TAN still pending"**, solange der Nutzer
+  nicht bestätigt hat, und stellt dabei seinen Zustand wieder her. **Nur dieser
+  eine Fehler darf wiederholt werden**, jeder andere setzt den Flow auf `Done`.
+  Deshalb die Prüfung auf den Text – die Bibliothek bietet keinen eigenen Typ.
+- `SecurityHolding.acquisition_value` ist der **Gesamt**-Einstandswert, die App
+  führt `einstand` als Kurs **je Stück**. Also teilen.
+- Vorgemerkte Umsätze werden weggelassen: sie ändern beim Buchen oft Text und
+  Betrag und rutschten dann als zweiter Eintrag durch.
+- Die Bibliothek kann **nur lesen** – Überweisungen sind nicht implementiert.
+
+## pytr-Eigenheiten
+
+- Aufgerufen wird `export_transactions` (nicht `dl_docs`): das holt die Buchungen
+  **ohne** jedes PDF herunterzuladen.
+- **`-l de` ist gesetzt**, weil pytr die Kopfzeile übersetzt. Ohne feste Sprache
+  heißt sie mal `Datum;Typ;Wert;Notiz;ISIN`, mal `Date;Type;Value;Note;ISIN`.
+  Gelesen werden trotzdem beide, aber der Standardfall soll vorhersagbar sein.
+- `pytr portfolio -o <datei>` schreibt `Name,ISIN,quantity,price,avgCost,netValue`.
+  `avgCost` ist der Einstandskurs je Stück – passt direkt.
+- **stdin wird zugenagelt.** Läuft die Anmeldung ab, fragt pytr im Terminal nach
+  einer TAN; im Dienst würde das ewig hängen.
+- Ein fehlgeschlagener Depotabruf darf die Buchungen nicht mitreißen – deshalb
+  steht er in einem eigenen `match` mit bloßer Warnung.
+- Standardaufruf ist `python -m pytr`, nicht `pytr`: der Scripts-Ordner von
+  Python liegt unter Windows oft nicht im PATH.
+
+## Wo es klemmt
+
+- **Produkt-ID der Deutschen Kreditwirtschaft** ist Pflicht für FinTS. Ohne sie
+  weisen die meisten Banken ab. Registrierung dauert Tage – früh anstoßen.
+- **FNZ Bank (ebase), BLZ 70113000, steht nicht im FinTS-Verzeichnis.** Das Depot
+  bleibt Handarbeit. Geprüft mit `fints-institute-db-cli --bankcode 70113000`.
+- **Trade Republic hat kein FinTS und keine offizielle API.** Nur `pytr`, mit dem
+  AGB-Vorbehalt aus dem README.
+- **Mixed Content:** Die App auf GitHub Pages (HTTPS) darf `http://localhost`
+  ansprechen, aber **nicht** `http://192.168.x.x`. Fürs Handy deshalb `app_ordner`
+  setzen, dann liefert die Brücke die App selbst aus und beide sind dieselbe Herkunft.
+- PowerShell 5.1 verflacht verschachtelte Arrays – gilt hier nur für Hilfsskripte,
+  aber es kostet sonst Zeit.
+
+## Testen
+
+`cargo test` deckt die Parser ab (pytr-CSV deutsch und englisch, Depotdatei,
+Zahlen- und Datumsformate) – die brauchen keine Zugangsdaten.
+
+Die Endpunkte lassen sich **ohne Bank** prüfen: eine `state/<id>.json` von Hand
+schreiben, `dienst` starten, mit `curl -H "Authorization: Bearer <token>"`
+abfragen. Genau so ist die Schnittstelle gegen die echte App verifiziert worden.
+
+Für den Weg App → Brücke im Browser: `brueckeKonten`, `kontoAbgleichen` und
+`depotAbgleichen` sind in der App global und lassen sich per `javascript_tool`
+direkt aufrufen.
