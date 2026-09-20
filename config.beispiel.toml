@@ -69,8 +69,13 @@ pin = ""                     # oder Umgebungsvariable FH_PIN_CB_DEPOT
 # trägst du „tr" sowohl beim Konto als auch beim Depot als Kennung ein.
 #
 # Vorher einmal im Terminal anmelden:
-#     python -m pytr login --store_credentials
-# Konten mit Freigabe über die TR-App zusätzlich mit --v2.
+#     pytr login --store_credentials --v2 --waf-token awswaf
+#
+# `--waf-token awswaf` ist kein Beiwerk: TRs API hängt hinter AWS WAF und
+# antwortet ohne Token mit „429 Too Many Requests". Mit `--v2` verzichtet
+# pytr von sich aus darauf, ohne `--v2` versucht es Playwright – das ist ein
+# separater Browser-Download. `awswaf` ist die reine Python-Variante und liegt
+# pytr bei.
 #
 # Achtung: TRs Nutzungsbedingungen sehen automatisierten Zugriff nicht vor.
 [[konto]]
@@ -80,7 +85,10 @@ bank = "Trade Republic"
 art = "giro"
 quelle = "pytr"
 tage = 0                     # 0 = alles holen. Nur dann stimmt der Saldo!
-# pytr_argumente = ["--v2"]  # für die Freigabe über die TR-App
+
+# Gilt für jeden Aufruf der Brücke. --waf-token awswaf gehört hier hinein,
+# sonst laufen die Abrufe in denselben 429 wie die Anmeldung.
+pytr_argumente = ["--v2", "--waf-token", "awswaf"]
 
 # Ohne Angabe wird `python -m pytr` aufgerufen. Das setzt voraus, dass die
 # Umgebung des Dienstes Python im PATH hat – bei einem per Aufgabenplanung
