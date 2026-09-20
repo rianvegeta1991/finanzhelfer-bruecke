@@ -48,11 +48,26 @@ Werkzeug, das viele Leute gemeinsam pflegen.
 
 ### 1. Produkt-ID beantragen (dauert am längsten – also zuerst)
 
-Die Deutsche Kreditwirtschaft verlangt, dass sich FinTS-Programme ausweisen.
-Die Registrierung ist kostenlos, aber sie dauert ein paar Tage:
-<https://www.hbci-zka.de/register/prod_register.htm>
+Seit dem 01.08.2019 gewährt die Deutsche Kreditwirtschaft den FinTS-Zugang nur
+noch **registrierten Produkten**. Die Registrierung ist kostenlos, dauert aber
+10–15 Werktage.
 
-Ohne Produkt-ID weisen die meisten Banken den Zugang ab.
+1. Formular herunterladen: <https://www.fints.org/de/hersteller/produktregistrierung>
+   (dort der Link **„Registrierungsprozess"** – eine zweiseitige PDF)
+2. Ausfüllen. Für eine selbst betriebene Brücke:
+   - *Art der Änderung*: **Neuer Eintrag**
+   - *Firmenbezeichnung / Produkteigner*: dein Name – eine Firma ist nirgends
+     vorgeschrieben, Produkteigner ist, wer die Software betreibt
+   - *Ansprechpartner, Anschrift, Telefon, eMail*: deine Daten
+   - *Produktname*: z. B. `Finanzhelfer-Bruecke`
+   - *Produktkategorie*: **Finanzverwaltungssoftware (PC-/MacOS-Desktop-Programm)**
+   - *Produktregistrierungsnummer*: leer lassen, die wird vergeben
+3. An **registrierung@hbci-zka.de** schicken (betreut von der SIZ GmbH, Bonn).
+
+Die zugeteilte Nummer kommt per Mail und gehört unter `[fints]` in die
+`config.toml`. **Eine Registrierung gilt für alle Banken** – nicht pro Institut.
+
+Ohne Produkt-ID weisen die Banken den Zugang ab.
 
 ### 2. Bauen
 

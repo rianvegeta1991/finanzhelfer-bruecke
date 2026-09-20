@@ -81,7 +81,9 @@ Versuch eine neue und wird misstrauisch.
 ## Wo es klemmt
 
 - **Produkt-ID der Deutschen Kreditwirtschaft** ist Pflicht für FinTS. Ohne sie
-  weisen die meisten Banken ab. Registrierung dauert Tage – früh anstoßen.
+  weisen die meisten Banken ab. Formular unter fints.org/de/hersteller/produktregistrierung, ausgefüllt an
+  registrierung@hbci-zka.de; 10–15 Werktage. Eine Registrierung gilt für alle Banken.
+  Die alte Adresse hbci-zka.de/register/ ist tot – nur die Mailadresse lebt noch.
 - **FNZ Bank (ebase), BLZ 70113000, steht nicht im FinTS-Verzeichnis.** Das Depot
   bleibt Handarbeit. Geprüft mit `fints-institute-db-cli --bankcode 70113000`.
 - **Trade Republic hat kein FinTS und keine offizielle API.** Nur `pytr`, mit dem

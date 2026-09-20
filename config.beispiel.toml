@@ -31,7 +31,8 @@ abgleich_minuten = 180
 [fints]
 # Produkt-Registrierungsnummer der Deutschen Kreditwirtschaft.
 # Kostenlos, aber Pflicht: ohne sie weisen die meisten Banken den Zugang ab.
-# Beantragt wird sie unter https://www.hbci-zka.de/register/prod_register.htm
+# Formular: https://www.fints.org/de/hersteller/produktregistrierung
+# ausgefuellt an registrierung@hbci-zka.de, Antwort in 10-15 Werktagen
 produkt_id = ""
 
 
