@@ -68,14 +68,23 @@ pin = ""                     # oder Umgebungsvariable FH_PIN_CB_DEPOT
 # EIN Eintrag genügt für beides: Verrechnungskonto und Depot. In der App
 # trägst du „tr" sowohl beim Konto als auch beim Depot als Kennung ein.
 #
-# Vorher einmal im Terminal anmelden:
-#     pytr login --store_credentials --v2 --waf-token awswaf
+# Vorher einmal im Terminal anmelden – OHNE --v2:
+#     pytr login --store_credentials --waf-token '<Token aus dem Browser>'
 #
-# `--waf-token awswaf` ist kein Beiwerk: TRs API hängt hinter AWS WAF und
-# antwortet ohne Token mit „429 Too Many Requests". Mit `--v2` verzichtet
-# pytr von sich aus darauf, ohne `--v2` versucht es Playwright – das ist ein
-# separater Browser-Download. `awswaf` ist die reine Python-Variante und liegt
-# pytr bei.
+# Zwei Dinge, die eine Weile kosten, wenn man sie nicht weiß:
+#
+# 1. TRs API hängt hinter AWS WAF. Ohne Token antwortet sie mit 429. Der
+#    eingebaute Abruf (`--waf-token awswaf`) holt ihn mit Chrome-TLS-Fingerab-
+#    druck, zeigt ihn dann aber über eine gewöhnliche Python-Verbindung vor –
+#    WAF verwirft ihn. Zuverlässig ist nur ein Token aus einem echten Browser:
+#    app.traderepublic.com öffnen, Entwicklertools → Application → Cookies →
+#    `aws-waf-token`, Wert kopieren. Er hält etwa eine Stunde.
+#
+# 2. KEIN --v2. Damit meldet pytr über /api/v2/auth/web/login an, erneuert die
+#    Sitzung aber über /api/v1/auth/web/session – der weist eine v2-Sitzung mit
+#    401 ab. resume_websession() verwirft daraufhin die Cookies und beginnt eine
+#    neue Anmeldung, die im Dienst am zugenagelten stdin scheitert. Mit der
+#    v1-Anmeldung passen Sitzung und Erneuerung zusammen.
 #
 # Achtung: TRs Nutzungsbedingungen sehen automatisierten Zugriff nicht vor.
 [[konto]]
@@ -88,7 +97,7 @@ tage = 0                     # 0 = alles holen. Nur dann stimmt der Saldo!
 
 # Gilt für jeden Aufruf der Brücke. --waf-token awswaf gehört hier hinein,
 # sonst laufen die Abrufe in denselben 429 wie die Anmeldung.
-pytr_argumente = ["--v2", "--waf-token", "awswaf"]
+pytr_argumente = ["--waf-token", "awswaf"]
 
 # Ohne Angabe wird `python -m pytr` aufgerufen. Das setzt voraus, dass die
 # Umgebung des Dienstes Python im PATH hat – bei einem per Aufgabenplanung

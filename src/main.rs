@@ -60,12 +60,13 @@ async fn los() -> Result<()> {
 
     let konfig = Konfig::finden()?;
 
-    // `pruefen` darf eine halbfertige Konfiguration ansehen – dafür ist es da.
-    // Alle anderen Befehle brauchen eine vollständige.
+    // Nur das, was ohne Konto schiefliegen kann, hält hier alles auf.
+    // Lücken bei einzelnen Konten werden dort behandelt, wo sie auffallen –
+    // sonst blockiert ein halb eingerichtetes Konto alle anderen.
     if befehl != "pruefen" {
-        let offen = konfig.probleme();
+        let offen = konfig.probleme_allgemein();
         if !offen.is_empty() {
-            eprintln!("Die Konfiguration ist noch nicht vollständig:\n");
+            eprintln!("Die Konfiguration ist noch nicht benutzbar:\n");
             for x in &offen {
                 eprintln!("  ✗ {x}");
             }
@@ -184,6 +185,10 @@ async fn pruefen(konfig: &Konfig) -> Result<()> {
 
 /// Ein Konto abgleichen und den Stand auf die Platte schreiben.
 async fn abgleichen(konto: &Konto, konfig: &Konfig, interaktiv: bool) -> Result<String> {
+    let offen = konfig.probleme_konto(konto);
+    if !offen.is_empty() {
+        bail!("noch nicht eingerichtet – {}", offen.join(" "));
+    }
     let mut bestand = Bestand::laden(&konto.id);
     let ergebnis = match konto.quelle {
         Quelle::Fints => {
@@ -278,6 +283,11 @@ async fn schleife(lage: Arc<Lage>, minuten: u64) {
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     loop {
         for konto in &lage.konfig.konten {
+            // Noch nicht fertig eingerichtete Konten überspringen, statt bei
+            // jedem Durchlauf dieselbe Meldung zu wiederholen
+            if !lage.konfig.probleme_konto(konto).is_empty() {
+                continue;
+            }
             match abgleichen(konto, &lage.konfig, false).await {
                 Ok(m) => println!("  {m}"),
                 Err(e) => eprintln!("  ! {}: {e:#}", konto.name),

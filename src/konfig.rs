@@ -202,58 +202,74 @@ impl Konfig {
         Ok(konfig)
     }
 
-    /// Sammelt alles, was noch fehlt – und zwar **vollständig**, statt beim
-    /// ersten Fund abzubrechen. `pruefen` zeigt die Liste als Merkzettel;
-    /// die übrigen Befehle verweigern den Dienst, solange sie nicht leer ist.
-    pub fn probleme(&self) -> Vec<String> {
+    /// Was unabhängig von einzelnen Konten fehlt.
+    pub fn probleme_allgemein(&self) -> Vec<String> {
         let mut p = Vec::new();
-
         if self.dienst.token.trim().is_empty() || self.dienst.token.starts_with("hier-eine-lange") {
             p.push("[dienst] `token` fehlt noch – denk dir eine lange, zufällige Zeichenkette aus.".into());
         }
         if self.konten.is_empty() {
             p.push("Es ist kein einziges [[konto]] eingetragen.".into());
         }
-        if self.konten.iter().any(|k| k.quelle == Quelle::Fints) && self.fints.produkt_id.trim().is_empty() {
-            p.push(
-                "[fints] `produkt_id` fehlt. Ohne registrierte Produkt-ID weisen die Banken \
-                 FinTS-Zugriffe ab – Formular unter fints.org/de/hersteller/produktregistrierung."
-                    .into(),
-            );
-        }
-
         let mut gesehen = std::collections::HashSet::new();
         for k in &self.konten {
             if !gesehen.insert(&k.id) {
                 p.push(format!("Die Konto-Kennung `{}` kommt zweimal vor – sie muss eindeutig sein.", k.id));
             }
-            match k.quelle {
-                Quelle::Fints => {
-                    for (feld, wert) in [("blz", &k.blz), ("iban", &k.iban), ("benutzer", &k.benutzer)] {
-                        if wert.trim().is_empty() || wert.contains("00000000") {
-                            p.push(format!("Konto `{}`: `{feld}` fehlt noch.", k.id));
-                        }
-                    }
-                    if k.pin().is_empty() {
-                        p.push(format!(
-                            "Konto `{}`: keine PIN. Entweder in die Datei eintragen oder die \
-                             Umgebungsvariable FH_PIN_{} setzen.",
-                            k.id,
-                            k.id.to_uppercase().replace('-', "_")
-                        ));
-                    }
-                }
-                Quelle::Bitvavo => {
-                    if k.schluessel.trim().is_empty() || k.geheimnis.trim().is_empty() {
-                        p.push(format!(
-                            "Konto `{}`: `schluessel` und `geheimnis` fehlen (API-Key mit Leserecht).",
-                            k.id
-                        ));
-                    }
-                }
-                Quelle::Pytr => {}
-            }
         }
+        p
+    }
+
+    /// Was **diesem einen** Konto fehlt.
+    ///
+    /// Bewusst je Konto: ein unvollständiges Konto darf die anderen nicht
+    /// blockieren. Wer Trade Republic einrichtet, soll das nicht lassen
+    /// müssen, weil die FinTS-Produkt-ID noch bei der Post liegt.
+    pub fn probleme_konto(&self, k: &Konto) -> Vec<String> {
+        let mut p = Vec::new();
+        match k.quelle {
+            Quelle::Fints => {
+                if self.fints.produkt_id.trim().is_empty() {
+                    p.push(
+                        "[fints] `produkt_id` fehlt. Ohne registrierte Produkt-ID weisen die Banken \
+                         FinTS-Zugriffe ab – Formular unter fints.org/de/hersteller/produktregistrierung."
+                            .into(),
+                    );
+                }
+                for (feld, wert) in [("blz", &k.blz), ("iban", &k.iban), ("benutzer", &k.benutzer)] {
+                    if wert.trim().is_empty() || wert.contains("00000000") {
+                        p.push(format!("Konto `{}`: `{feld}` fehlt noch.", k.id));
+                    }
+                }
+                if k.pin().is_empty() {
+                    p.push(format!(
+                        "Konto `{}`: keine PIN. Entweder in die Datei eintragen oder die \
+                         Umgebungsvariable FH_PIN_{} setzen.",
+                        k.id,
+                        k.id.to_uppercase().replace('-', "_")
+                    ));
+                }
+            }
+            Quelle::Bitvavo => {
+                if k.schluessel.trim().is_empty() || k.geheimnis.trim().is_empty() {
+                    p.push(format!(
+                        "Konto `{}`: `schluessel` und `geheimnis` fehlen (API-Key mit Leserecht).",
+                        k.id
+                    ));
+                }
+            }
+            Quelle::Pytr => {}
+        }
+        p
+    }
+
+    /// Alles zusammen – für den Merkzettel in `pruefen`.
+    pub fn probleme(&self) -> Vec<String> {
+        let mut p = self.probleme_allgemein();
+        for k in &self.konten {
+            p.extend(self.probleme_konto(k));
+        }
+        p.dedup();
         p
     }
 
