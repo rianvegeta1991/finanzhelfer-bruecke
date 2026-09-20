@@ -253,7 +253,20 @@ async fn dienst(konfig: Konfig) -> Result<()> {
     // vom Handy aus erreichbar, sobald die Adresse auf 0.0.0.0 steht.
     if let Some(ordner) = &app_ordner {
         if Path::new(ordner).join("index.html").exists() {
-            app = app.fallback_service(tower_http::services::ServeDir::new(ordner));
+            // Kein Zwischenspeichern im Browser: die App liegt als Ordner
+            // daneben und ändert sich beim Entwickeln. Mit `last-modified` und
+            // `etag` von ServeDir bekäme man sonst eine alte Fassung serviert,
+            // ohne es zu merken. Die Offline-Fähigkeit leidet nicht – die
+            // besorgt der Service Worker mit seinem eigenen Zwischenspeicher.
+            let nicht_cachen = tower_http::set_header::SetResponseHeaderLayer::overriding(
+                header::CACHE_CONTROL,
+                header::HeaderValue::from_static("no-store, must-revalidate"),
+            );
+            app = app.fallback_service(
+                tower::ServiceBuilder::new()
+                    .layer(nicht_cachen)
+                    .service(tower_http::services::ServeDir::new(ordner)),
+            );
             println!("App wird mit ausgeliefert aus {ordner}");
         } else {
             eprintln!("! In {ordner} liegt keine index.html – die App wird nicht ausgeliefert.");
