@@ -126,8 +126,11 @@ async fn pytr_aufrufen(konto: &Konto, args: &[String]) -> Result<()> {
         .await
         .map_err(|e| {
             anyhow!(
-                "`{programm}` lässt sich nicht starten ({e}). Installiert wird pytr mit \
-                 `python -m pip install pytr`."
+                "`{programm}` lässt sich nicht starten ({e}).\n\
+                 Installiert wird pytr mit `python -m pip install pytr`. Findet der Dienst es \
+                 trotzdem nicht, kennt seine Umgebung den PATH von Python nicht – dann in der \
+                 config.toml `pytr_programm` auf den vollen Pfad zu pytr.exe setzen \
+                 (in EINFACHEN Anführungszeichen, sonst verschluckt TOML die Backslashes)."
             )
         })?;
 

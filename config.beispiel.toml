@@ -80,8 +80,16 @@ bank = "Trade Republic"
 art = "giro"
 quelle = "pytr"
 tage = 0                     # 0 = alles holen. Nur dann stimmt der Saldo!
-# pytr_programm = "pytr"     # falls pytr.exe im PATH liegt
 # pytr_argumente = ["--v2"]  # für die Freigabe über die TR-App
+
+# Ohne Angabe wird `python -m pytr` aufgerufen. Das setzt voraus, dass die
+# Umgebung des Dienstes Python im PATH hat – bei einem per Aufgabenplanung
+# gestarteten Prozess ist das oft nicht so. Sicherer ist der volle Pfad:
+#
+#   ACHTUNG einfache Anführungszeichen. In doppelten wäre \U eine
+#   Escape-Sequenz, und das TOML ließe sich nicht mehr lesen.
+#
+# pytr_programm = 'C:\Users\DEINNAME\AppData\Local\Programs\Python\Python313\Scripts\pytr.exe'
 
 
 # ─────────────────────────────── Bitvavo ───────────────────────────────
