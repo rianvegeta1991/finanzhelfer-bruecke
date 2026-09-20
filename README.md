@@ -82,6 +82,25 @@ Die fertige Datei liegt danach unter `target\release\finanzhelfer-bruecke.exe`.
 `config.beispiel.toml` nach `config.toml` kopieren und ausfüllen. Die Datei
 enthält Zugangsdaten und steht deshalb in der `.gitignore`.
 
+```powershell
+copy config.beispiel.toml config.toml
+```
+
+Gesucht wird sie im aktuellen Verzeichnis, neben der Programmdatei und in den
+beiden Ordnern darüber – damit sie auch gefunden wird, wenn die `.exe` aus
+`target\release\` oder per Aufgabenplanung startet. `state/` landet immer
+daneben, nicht im Arbeitsverzeichnis.
+
+Was noch fehlt, sagt dir jederzeit:
+
+```powershell
+.\target\release\finanzhelfer-bruecke.exe pruefen
+```
+
+Das listet alle Konten, schlägt jede Bankleitzahl im FinTS-Verzeichnis nach und
+hängt einen Merkzettel mit den offenen Feldern an. Die anderen Befehle
+verweigern den Dienst, solange dort noch etwas steht.
+
 Wer die PIN nicht im Klartext ablegen will, lässt das Feld leer und setzt
 stattdessen eine Umgebungsvariable:
 

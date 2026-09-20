@@ -150,57 +150,111 @@ impl Konto {
     }
 }
 
+/// Wo nach der `config.toml` gesucht wird – in dieser Reihenfolge:
+///   1. im aktuellen Verzeichnis (so arbeitet man beim Entwickeln)
+///   2. neben der Programmdatei (so startet man sie per Doppelklick oder
+///      Aufgabenplanung, und dann ist das Arbeitsverzeichnis irgendwas)
+///   3. eine Ebene über der Programmdatei, wegen `target\release\`
+pub fn konfig_orte() -> Vec<PathBuf> {
+    let mut orte = vec![PathBuf::from("config.toml")];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(ordner) = exe.parent() {
+            orte.push(ordner.join("config.toml"));
+            if let Some(darueber) = ordner.parent() {
+                orte.push(darueber.join("config.toml"));
+                // target\release\ -> Projektordner
+                if let Some(nochmal) = darueber.parent() {
+                    orte.push(nochmal.join("config.toml"));
+                }
+            }
+        }
+    }
+    orte
+}
+
 impl Konfig {
+    /// Sucht die Konfiguration an allen plausiblen Stellen.
+    pub fn finden() -> Result<Self> {
+        let orte = konfig_orte();
+        for ort in &orte {
+            if ort.is_file() {
+                return Self::laden(ort);
+            }
+        }
+        bail!(
+            "Keine config.toml gefunden. Gesucht wurde in:\n{}\n\n\
+             Lege sie nach dem Muster von config.beispiel.toml an:\n  \
+             copy config.beispiel.toml config.toml",
+            orte.iter().map(|o| format!("  - {}", o.display())).collect::<Vec<_>>().join("\n")
+        );
+    }
+
     pub fn laden(pfad: &Path) -> Result<Self> {
         let roh = std::fs::read_to_string(pfad)
-            .with_context(|| format!("{} lässt sich nicht lesen. Lege sie nach dem Muster von config.beispiel.toml an.", pfad.display()))?;
+            .with_context(|| format!("{} lässt sich nicht lesen", pfad.display()))?;
         let konfig: Konfig = toml::from_str(&roh)
             .with_context(|| format!("{} ist kein gültiges TOML", pfad.display()))?;
-        konfig.pruefen()?;
+        let heimat = pfad.parent().filter(|p| !p.as_os_str().is_empty())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
+        HEIMAT.set(heimat).ok();
+        println!("Konfiguration: {}", pfad.display());
         Ok(konfig)
     }
 
-    /// Früh meckern statt später im Bankdialog scheitern.
-    fn pruefen(&self) -> Result<()> {
-        if self.dienst.token.trim().is_empty() {
-            bail!("In [dienst] fehlt ein `token`. Denk dir eine lange, zufällige Zeichenkette aus.");
+    /// Sammelt alles, was noch fehlt – und zwar **vollständig**, statt beim
+    /// ersten Fund abzubrechen. `pruefen` zeigt die Liste als Merkzettel;
+    /// die übrigen Befehle verweigern den Dienst, solange sie nicht leer ist.
+    pub fn probleme(&self) -> Vec<String> {
+        let mut p = Vec::new();
+
+        if self.dienst.token.trim().is_empty() || self.dienst.token.starts_with("hier-eine-lange") {
+            p.push("[dienst] `token` fehlt noch – denk dir eine lange, zufällige Zeichenkette aus.".into());
         }
         if self.konten.is_empty() {
-            bail!("Es ist kein einziges [[konto]] eingetragen.");
+            p.push("Es ist kein einziges [[konto]] eingetragen.".into());
         }
+        if self.konten.iter().any(|k| k.quelle == Quelle::Fints) && self.fints.produkt_id.trim().is_empty() {
+            p.push(
+                "[fints] `produkt_id` fehlt. Ohne registrierte Produkt-ID weisen die Banken \
+                 FinTS-Zugriffe ab – Formular unter fints.org/de/hersteller/produktregistrierung."
+                    .into(),
+            );
+        }
+
         let mut gesehen = std::collections::HashSet::new();
         for k in &self.konten {
             if !gesehen.insert(&k.id) {
-                bail!("Die Konto-Kennung `{}` kommt zweimal vor – sie muss eindeutig sein.", k.id);
+                p.push(format!("Die Konto-Kennung `{}` kommt zweimal vor – sie muss eindeutig sein.", k.id));
             }
             match k.quelle {
                 Quelle::Fints => {
-                    if k.blz.is_empty() || k.iban.is_empty() || k.benutzer.is_empty() {
-                        bail!("Konto `{}`: für FinTS braucht es `blz`, `iban` und `benutzer`.", k.id);
+                    for (feld, wert) in [("blz", &k.blz), ("iban", &k.iban), ("benutzer", &k.benutzer)] {
+                        if wert.trim().is_empty() || wert.contains("00000000") {
+                            p.push(format!("Konto `{}`: `{feld}` fehlt noch.", k.id));
+                        }
                     }
                     if k.pin().is_empty() {
-                        bail!(
-                            "Konto `{}`: keine PIN. Trag sie in die Datei ein oder setze die Umgebungsvariable FH_PIN_{}.",
+                        p.push(format!(
+                            "Konto `{}`: keine PIN. Entweder in die Datei eintragen oder die \
+                             Umgebungsvariable FH_PIN_{} setzen.",
                             k.id,
                             k.id.to_uppercase().replace('-', "_")
-                        );
+                        ));
                     }
                 }
                 Quelle::Bitvavo => {
-                    if k.schluessel.is_empty() || k.geheimnis.is_empty() {
-                        bail!("Konto `{}`: für Bitvavo braucht es `schluessel` und `geheimnis` (API-Key mit Leserecht).", k.id);
+                    if k.schluessel.trim().is_empty() || k.geheimnis.trim().is_empty() {
+                        p.push(format!(
+                            "Konto `{}`: `schluessel` und `geheimnis` fehlen (API-Key mit Leserecht).",
+                            k.id
+                        ));
                     }
                 }
                 Quelle::Pytr => {}
             }
         }
-        if self.konten.iter().any(|k| k.quelle == Quelle::Fints) && self.fints.produkt_id.trim().is_empty() {
-            eprintln!(
-                "! Achtung: keine `produkt_id` unter [fints]. Die meisten Banken weisen FinTS-Zugriffe\n\
-                 !          ohne registrierte Produkt-ID ab. Wie man sie bekommt, steht im README."
-            );
-        }
-        Ok(())
+        p
     }
 
     pub fn konto(&self, id: &str) -> Option<&Konto> {
@@ -208,7 +262,16 @@ impl Konfig {
     }
 }
 
+/// Wo die Konfiguration gefunden wurde. `state/` landet daneben – sonst
+/// schriebe ein per Aufgabenplanung gestarteter Dienst seinen Bestand
+/// irgendwohin und fände ihn beim nächsten Start nicht wieder.
+static HEIMAT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
 /// Ablageort für Sitzungsdaten und den zuletzt geholten Bestand.
 pub fn zustand_ordner() -> PathBuf {
-    PathBuf::from("state")
+    HEIMAT
+        .get()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("state")
 }

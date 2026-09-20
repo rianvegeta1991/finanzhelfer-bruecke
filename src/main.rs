@@ -58,7 +58,21 @@ async fn los() -> Result<()> {
         return Ok(());
     }
 
-    let konfig = Konfig::laden(Path::new("config.toml"))?;
+    let konfig = Konfig::finden()?;
+
+    // `pruefen` darf eine halbfertige Konfiguration ansehen – dafür ist es da.
+    // Alle anderen Befehle brauchen eine vollständige.
+    if befehl != "pruefen" {
+        let offen = konfig.probleme();
+        if !offen.is_empty() {
+            eprintln!("Die Konfiguration ist noch nicht vollständig:\n");
+            for x in &offen {
+                eprintln!("  ✗ {x}");
+            }
+            eprintln!("\n`finanzhelfer-bruecke pruefen` zeigt den Stand jederzeit an.");
+            std::process::exit(1);
+        }
+    }
 
     match befehl {
         "pruefen" => pruefen(&konfig).await,
@@ -151,6 +165,18 @@ async fn pruefen(konfig: &Konfig) -> Result<()> {
         println!("  {:<12} {:<28} zuletzt: {zuletzt}", "", "");
         if stand.system_id.is_some() {
             println!("  {:<12} {:<28} Anmeldung gemerkt ✓", "", "");
+        }
+    }
+
+    let offen = konfig.probleme();
+    println!();
+    if offen.is_empty() {
+        println!("Alles beisammen. Als Nächstes für jedes FinTS-Konto einmal:");
+        println!("  finanzhelfer-bruecke anmelden <konto-id>");
+    } else {
+        println!("Das fehlt noch:");
+        for x in &offen {
+            println!("  ✗ {x}");
         }
     }
     Ok(())
