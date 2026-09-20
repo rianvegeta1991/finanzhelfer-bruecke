@@ -77,23 +77,29 @@ pub async fn abgleichen(konto: &Konto, bestand: &mut Bestand) -> Result<String> 
     // ---- Depotbestand ----
     let depot_datei = ziel.join("portfolio.csv");
     let mut positionen = 0;
+    let mut gemeldeter_saldo = None;
     match pytr_aufrufen(konto, &["portfolio".into(), "-o".into(), depot_datei.display().to_string()]).await {
-        Ok(()) if depot_datei.exists() => {
-            let liste = portfolio_lesen(&datei_lesen(&depot_datei)?)?;
-            positionen = liste.len();
-            if !liste.is_empty() {
-                bestand.positionen = liste;
+        Ok(ausgabe) => {
+            gemeldeter_saldo = cash_aus_ausgabe(&ausgabe);
+            if depot_datei.exists() {
+                let liste = portfolio_lesen(&datei_lesen(&depot_datei)?)?;
+                positionen = liste.len();
+                if !liste.is_empty() {
+                    bestand.positionen = liste;
+                }
+            } else {
+                eprintln!("  ! pytr hat keine portfolio.csv geschrieben – Bestände bleiben, wie sie waren.");
             }
         }
-        Ok(()) => eprintln!("  ! pytr hat keine portfolio.csv geschrieben – Bestände bleiben, wie sie waren."),
         // Ein fehlgeschlagener Depotabruf darf die Buchungen nicht mitreißen
         Err(e) => eprintln!("  ! Depotbestand von Trade Republic nicht geholt: {e:#}"),
     }
 
-    // Den Kontostand liefert die CSV nicht mit – er ist die Summe aller
-    // Bewegungen seit Kontoeröffnung. Das stimmt nur, wenn `tage` auf 0 steht
-    // (alles holen); sonst ist es der Saldo des geholten Ausschnitts.
-    let saldo: f64 = bestand.umsaetze.iter().map(|u| u.betrag).sum();
+    // Kontostand: am liebsten der, den Trade Republic selbst meldet. Nur wenn
+    // der fehlt, die Summe aller Buchungen – die stimmt bloß, wenn `tage` auf 0
+    // steht und jede Bewegung im Export auftaucht, und driftet sonst.
+    let saldo: f64 = gemeldeter_saldo
+        .unwrap_or_else(|| bestand.umsaetze.iter().map(|u| u.betrag).sum());
     bestand.konto = Some(KontoAus {
         kennung: konto.id.clone(),
         name: konto.name.clone(),
@@ -113,7 +119,7 @@ pub async fn abgleichen(konto: &Konto, bestand: &mut Bestand) -> Result<String> 
 ///
 /// stdin wird zugenagelt: läuft die Anmeldung ab, fragt pytr im Terminal nach
 /// einer TAN – im Dienst würde das ewig hängen. So bricht es sauber ab.
-async fn pytr_aufrufen(konto: &Konto, args: &[String]) -> Result<()> {
+async fn pytr_aufrufen(konto: &Konto, args: &[String]) -> Result<String> {
     let (programm, vorlauf) = konto.pytr_befehl();
     let ausgabe = tokio::process::Command::new(&programm)
         .args(&vorlauf)
@@ -145,7 +151,29 @@ async fn pytr_aufrufen(konto: &Konto, args: &[String]) -> Result<()> {
             letzte.into_iter().rev().collect::<Vec<_>>().join(" / ")
         );
     }
-    Ok(())
+    Ok(String::from_utf8_lossy(&ausgabe.stdout).into_owned())
+}
+
+/// Liest den echten Kontostand aus der Ausgabe von `pytr portfolio`.
+///
+/// Die Zeilen `Depot`, `Cash` und `Total` druckt pytr auch dann, wenn die
+/// Bestände über `-o` in eine Datei gehen. Das ist der Saldo, den Trade
+/// Republic selbst meldet – deutlich verlässlicher, als ihn aus der Summe
+/// aller Buchungen zu erschließen.
+fn cash_aus_ausgabe(ausgabe: &str) -> Option<f64> {
+    for zeile in ausgabe.lines() {
+        let z = zeile.trim();
+        if let Some(rest) = z.strip_prefix("Cash ") {
+            // "Cash EUR       11500.00"
+            let mut teile = rest.split_whitespace();
+            let _waehrung = teile.next()?;
+            let betrag = teile.next()?;
+            if let Ok(w) = betrag.replace(',', "").parse::<f64>() {
+                return Some(w);
+            }
+        }
+    }
+    None
 }
 
 /// pytr schreibt UTF-8; falls doch nicht, nicht daran scheitern.
@@ -268,6 +296,24 @@ fn portfolio_lesen(roh: &str) -> Result<Vec<PositionAus>> {
             let n = feld(&teile, i_name);
             if n.is_empty() { isin.clone() } else { n }
         };
+        let einstand = betrag_lesen(&feld(&teile, i_einstand)).unwrap_or(0.0);
+        let mut kurs = betrag_lesen(&feld(&teile, i_kurs)).unwrap_or(0.0);
+
+        // Anleihen notiert Trade Republic teils in **Prozent vom Nennwert**
+        // (104,75), den Einstand daneben aber als Faktor (1,0877). pytr rechnet
+        // stur Stück × Kurs und kommt so auf das Hundertfache: aus 468 € wurden
+        // 46.844 €. Erkennbar ist es nur am Verhältnis der beiden Zahlen –
+        // ein echter Gewinn in dieser Größenordnung kommt nicht vor.
+        if einstand > 0.0 {
+            let verhaeltnis = kurs / einstand;
+            if (50.0..=200.0).contains(&verhaeltnis) {
+                eprintln!(
+                    "  i {name}: Kurs {kurs} sieht nach Prozent vom Nennwert aus (Einstand {einstand}) – durch 100 geteilt."
+                );
+                kurs /= 100.0;
+            }
+        }
+
         raus.push(PositionAus {
             art: art_raten(&name, &isin),
             name,
@@ -275,8 +321,8 @@ fn portfolio_lesen(roh: &str) -> Result<Vec<PositionAus>> {
             wkn: String::new(),
             symbol: String::new(),
             stueck,
-            einstand: betrag_lesen(&feld(&teile, i_einstand)).unwrap_or(0.0),
-            kurs: betrag_lesen(&feld(&teile, i_kurs)).unwrap_or(0.0),
+            einstand,
+            kurs,
             waehrung: "EUR".into(),
         });
     }
@@ -380,6 +426,38 @@ mod tests {
         assert_eq!(erg[0].art, "etf");
         assert_eq!(erg[1].art, "aktie");
         assert_eq!(erg[1].kurs, 224.15);
+    }
+
+    /// Echte Zeile aus einem TR-Depot: Kurs in Prozent, Einstand als Faktor.
+    /// Unkorrigiert kämen 46.844 € statt 468 € heraus.
+    #[test]
+    fn rechnet_anleihe_in_prozent_um() {
+        let roh = "Name;ISIN;quantity;price;avgCost;netValue\n\
+                   Sept. 2033;XS2680932907;447.2;104.75;1.0877;46844.2\n";
+        let erg = portfolio_lesen(roh).unwrap();
+        assert_eq!(erg.len(), 1);
+        assert!((erg[0].kurs - 1.0475).abs() < 1e-9, "Kurs war {}", erg[0].kurs);
+        let wert = erg[0].stueck * erg[0].kurs;
+        assert!((wert - 468.44).abs() < 0.01, "Wert war {wert}");
+    }
+
+    /// Eine Anleihe, bei der beide Zahlen schon dieselbe Einheit haben,
+    /// darf nicht angefasst werden.
+    #[test]
+    fn laesst_stimmige_anleihe_in_ruhe() {
+        let roh = "Name;ISIN;quantity;price;avgCost;netValue\n\
+                   Mai 2037;XS2829810923;2563.02;0.9327;0.9698;2390.53\n";
+        let erg = portfolio_lesen(roh).unwrap();
+        assert_eq!(erg[0].kurs, 0.9327);
+    }
+
+    #[test]
+    fn liest_den_saldo_aus_der_ausgabe() {
+        let ausgabe = "Depot      29000.00 ->   30403.57    1403.57     4.8%\n\
+                       Cash EUR                              11500.25\n\
+                       Total      40500.00 ->   41903.82\n";
+        assert_eq!(cash_aus_ausgabe(ausgabe), Some(11500.25));
+        assert_eq!(cash_aus_ausgabe("nichts dergleichen"), None);
     }
 
     #[test]
