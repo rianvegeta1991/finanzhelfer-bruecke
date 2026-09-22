@@ -38,6 +38,18 @@ fn ordner(konto: &Konto) -> PathBuf {
     }
 }
 
+/// Einmalige Anmeldung bei Trade Republic.
+///
+/// Läuft über die Brücke statt direkt im Terminal, weil pytr dann eine
+/// Umgebung bekommt, die wir selbst bestimmen – insbesondere den Ort der
+/// Playwright-Browser. Der Zwei-Faktor-Code wird vom Nutzer getippt; stdin
+/// bleibt deshalb durchgereicht.
+pub async fn anmelden(konto: &Konto) -> Result<String> {
+    eprintln!("Melde bei Trade Republic an. Der Code kommt als Mitteilung in die TR-App.");
+    pytr_interaktiv(konto, &["login".into(), "--store_credentials".into()]).await?;
+    Ok(format!("{}: angemeldet", konto.name))
+}
+
 pub async fn abgleichen(konto: &Konto, bestand: &mut Bestand) -> Result<String> {
     let ziel = ordner(konto);
     std::fs::create_dir_all(&ziel)
@@ -119,9 +131,50 @@ pub async fn abgleichen(konto: &Konto, bestand: &mut Bestand) -> Result<String> 
 ///
 /// stdin wird zugenagelt: läuft die Anmeldung ab, fragt pytr im Terminal nach
 /// einer TAN – im Dienst würde das ewig hängen. So bricht es sauber ab.
+/// Wo Playwright seine Browser ablegt.
+///
+/// Wird das nicht ausdrücklich gesetzt, hängt es an der Umgebung des
+/// aufrufenden Prozesses – und die kann je nach Terminal abweichen. Genau
+/// daran ist eine Anmeldung schon gescheitert („Chromium is not installed",
+/// obwohl es danebenlag). Mit festem Pfad ist es nicht mehr dem Zufall
+/// überlassen.
+fn browser_ordner() -> Option<String> {
+    let lokal = std::env::var("LOCALAPPDATA").ok()?;
+    let pfad = std::path::Path::new(&lokal).join("ms-playwright");
+    pfad.is_dir().then(|| pfad.display().to_string())
+}
+
+/// Interaktiver Aufruf: stdin bleibt offen, damit der Nutzer den Code tippen kann.
+async fn pytr_interaktiv(konto: &Konto, args: &[String]) -> Result<()> {
+    let (programm, vorlauf) = konto.pytr_befehl();
+    let mut befehl = tokio::process::Command::new(&programm);
+    befehl
+        .args(&vorlauf)
+        .args(args)
+        .args(konto.pytr_argumente.iter())
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    if let Some(ordner) = browser_ordner() {
+        befehl.env("PLAYWRIGHT_BROWSERS_PATH", ordner);
+    }
+    let status = befehl
+        .status()
+        .await
+        .map_err(|e| anyhow!("`{programm}` lässt sich nicht starten ({e})."))?;
+    if !status.success() {
+        bail!("pytr ist ausgestiegen ({status}). Die Meldung steht darüber.");
+    }
+    Ok(())
+}
+
 async fn pytr_aufrufen(konto: &Konto, args: &[String]) -> Result<String> {
     let (programm, vorlauf) = konto.pytr_befehl();
-    let ausgabe = tokio::process::Command::new(&programm)
+    let mut vorbereitet = tokio::process::Command::new(&programm);
+    if let Some(ordner) = browser_ordner() {
+        vorbereitet.env("PLAYWRIGHT_BROWSERS_PATH", ordner);
+    }
+    let ausgabe = vorbereitet
         .args(&vorlauf)
         .args(args)
         .args(konto.pytr_argumente.iter())

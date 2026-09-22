@@ -105,6 +105,11 @@ async fn los() -> Result<()> {
             let konto = konfig
                 .konto(id)
                 .ok_or_else(|| anyhow::anyhow!("Kein Konto mit der Kennung `{id}` in der config.toml"))?;
+            // Trade Republic hat eine eigene Anmeldung (Zwei-Faktor-Code statt
+            // TAN); sie läuft vor dem ersten Abruf.
+            if konto.quelle == Quelle::Pytr {
+                quelle_tr::anmelden(konto).await?;
+            }
             let meldung = abgleichen(konto, &konfig, true).await?;
             println!("✓ {meldung}");
             println!("\nDie Anmeldung ist gemerkt. Ab jetzt läuft der Abgleich ohne TAN,");
