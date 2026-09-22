@@ -18,6 +18,7 @@ mod konfig;
 mod modell;
 mod quelle_bitvavo;
 mod quelle_fints;
+mod quelle_fints_py;
 mod quelle_tr;
 
 use anyhow::{Result, bail};
@@ -50,7 +51,25 @@ async fn main() {
 }
 
 async fn los() -> Result<()> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+
+    // `--laut` schaltet das Protokoll von fints-rs frei. Ohne das sieht man bei
+    // einem abgewiesenen Bankdialog nur „9800 – Dialog abgebrochen"; die Bank
+    // schickt den eigentlichen Grund in weiteren Rückmeldungen, und die landen
+    // dort im Protokoll statt in der Fehlermeldung.
+    let laut = args.iter().any(|a| a == "--laut");
+    args.retain(|a| a != "--laut");
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new(if laut { "fints=debug" } else { "fints=warn" })
+                }),
+        )
+        .with_writer(std::io::stderr)
+        .with_target(false)
+        .init();
+
     let befehl = args.first().map(String::as_str).unwrap_or("dienst");
 
     if matches!(befehl, "hilfe" | "--help" | "-h") {
@@ -192,7 +211,13 @@ async fn abgleichen(konto: &Konto, konfig: &Konfig, interaktiv: bool) -> Result<
     let mut bestand = Bestand::laden(&konto.id);
     let ergebnis = match konto.quelle {
         Quelle::Fints => {
-            quelle_fints::abgleichen(konto, &konfig.fints.produkt_id, &mut bestand, interaktiv).await
+            // Voreinstellung ist python-fints; `motor = "rust"` nimmt die
+            // eingebaute Bibliothek (siehe quelle_fints_py.rs, warum nicht).
+            if konfig.fints.motor == "rust" {
+                quelle_fints::abgleichen(konto, &konfig.fints.produkt_id, &mut bestand, interaktiv).await
+            } else {
+                quelle_fints_py::abgleichen(konto, &konfig.fints, &mut bestand, interaktiv).await
+            }
         }
         Quelle::Bitvavo => quelle_bitvavo::abgleichen(konto, &mut bestand).await,
         Quelle::Pytr => quelle_tr::abgleichen(konto, &mut bestand).await,

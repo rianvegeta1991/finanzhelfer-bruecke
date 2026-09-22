@@ -41,13 +41,34 @@ pub struct Dienst {
     pub abgleich_minuten: u64,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct FintsKonfig {
     /// Produkt-Registrierungsnummer der Deutschen Kreditwirtschaft.
     /// Ohne sie weisen die meisten Banken den Zugang ab – siehe README.
     #[serde(default)]
     pub produkt_id: String,
+    /// Welcher FinTS-Motor spricht mit der Bank?
+    ///
+    /// `python` (Voreinstellung) ruft `fints_helfer.py` auf und damit
+    /// `python-fints`. `rust` nimmt die eingebaute Bibliothek `fints-rs` –
+    /// die ist schlanker, baut aber für ING und Commerzbank Nachrichten,
+    /// die diese Banken zurückweisen. Siehe quelle_fints_py.rs.
+    #[serde(default = "standard_motor")]
+    pub motor: String,
+    /// Womit Python gestartet wird. Voller Pfad hilft, wenn die Umgebung
+    /// eines Dienstes den PATH nicht kennt.
+    #[serde(default = "standard_python")]
+    pub python: String,
 }
+
+impl Default for FintsKonfig {
+    fn default() -> Self {
+        Self { produkt_id: String::new(), motor: standard_motor(), python: standard_python() }
+    }
+}
+
+fn standard_motor() -> String { "python".into() }
+fn standard_python() -> String { "python".into() }
 
 /// Woher die Daten eines Kontos kommen.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -282,6 +303,12 @@ impl Konfig {
 /// schriebe ein per Aufgabenplanung gestarteter Dienst seinen Bestand
 /// irgendwohin und fände ihn beim nächsten Start nicht wieder.
 static HEIMAT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Der Ordner, in dem die Konfiguration gefunden wurde. Dort liegen auch
+/// `fints_helfer.py` und `state/`.
+pub fn heimat() -> PathBuf {
+    HEIMAT.get().cloned().unwrap_or_else(|| PathBuf::from("."))
+}
 
 /// Ablageort für Sitzungsdaten und den zuletzt geholten Bestand.
 pub fn zustand_ordner() -> PathBuf {

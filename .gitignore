@@ -7,3 +7,6 @@ state/
 # Rust
 /target
 **/*.rs.bk
+
+# FinTS-Sitzungen (enthalten die gemerkte Anmeldung)
+*-fints.bin

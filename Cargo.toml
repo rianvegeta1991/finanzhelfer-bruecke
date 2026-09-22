@@ -15,7 +15,9 @@ rust_decimal = "1.43.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.10"
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "process", "io-util"] }
 toml = "1.1.6"
 tower = { version = "0.5.3", features = ["util"] }
 tower-http = { version = "0.7.1", features = ["cors", "fs", "set-header"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
