@@ -22,13 +22,25 @@ der App genau drei Endpunkte hin, mehr weiß die App nicht von den Banken.
 
 | Quelle | Wie | Was kommt an |
 |---|---|---|
-| **ING, Commerzbank, Sparkassen, Volksbanken …** | FinTS 3.0 über [`fints-rs`](https://crates.io/crates/fints-rs) | Saldo, Umsätze, Depotbestände |
+| **ING, Commerzbank, Sparkassen, Volksbanken …** | FinTS 3.0 über [`python-fints`](https://github.com/raphaelm/python-fints) | Saldo, Umsätze, Depotbestände |
 | **Bitvavo** | offizielle REST-API, Schlüssel mit Leserecht | Krypto-Bestände und Kurse |
 | **Trade Republic** | [`pytr`](https://github.com/MartinScharrer/pytr) – inoffiziell | Buchungen und Depotbestand |
 | **FNZ Bank (ebase)** | — | kein FinTS-Zugang; bleibt Handarbeit |
 
 Ob deine Bank FinTS kann, sagt dir `finanzhelfer-bruecke pruefen`: die Brücke
 schlägt die Bankleitzahl im FinTS-Verzeichnis nach und zeigt den Endpunkt.
+Steht dort keine Adresse, heißt das nicht zwingend „geht nicht" – manche Banken
+bedienen mehrere Bankleitzahlen über **einen** Server, eingetragen ist er aber
+nur bei einer davon. Dann die Adresse beim Konto als `url = "https://…"` setzen.
+
+### Warum python-fints und nicht fints-rs
+
+Die Brücke bringt mit [`fints-rs`](https://crates.io/crates/fints-rs) auch einen
+Rust-Motor mit (`[fints] motor = "rust"`), aber der baut für ING und Commerzbank
+Nachrichten, die die Banken zurückweisen: ING antwortet auf den zweiten Dialog
+mit `9010 – Ungültiger Signaturaufbau`, die Commerzbank schon auf den ersten.
+Zugangsdaten und Produkt-ID sind dabei nachweislich in Ordnung – der erste
+Dialog bei ING läuft durch. Voreinstellung ist deshalb `motor = "python"`.
 
 ### Zu Trade Republic
 
@@ -122,8 +134,9 @@ Befehl noch einmal.
 Für Trade Republic stattdessen einmalig:
 
 ```powershell
-python -m pip install pytr
-python -m pytr login --store_credentials
+python -m pip install "pytr[playwright]"
+python -m playwright install chromium
+pytr login --store_credentials --waf-token playwright
 ```
 
 ### 5. Laufen lassen
