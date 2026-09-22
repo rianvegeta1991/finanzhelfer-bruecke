@@ -102,6 +102,13 @@ pub struct Konto {
     pub iban: String,
     #[serde(default)]
     pub bic: String,
+    /// FinTS-Adresse der Bank. Leer = im Bankverzeichnis nachschlagen.
+    ///
+    /// Nötig, wenn das Verzeichnis zur eigenen BLZ keine Adresse kennt: die
+    /// Commerzbank etwa bedient all ihre Bankleitzahlen über **einen** Server,
+    /// eingetragen ist er aber nur bei einer davon.
+    #[serde(default)]
+    pub url: String,
     /// Zugangsnummer/Benutzerkennung im Online-Banking.
     #[serde(default)]
     pub benutzer: String,

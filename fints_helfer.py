@@ -23,11 +23,19 @@ Alles Menschenlesbare geht auf stderr.
 
 import datetime
 import json
+import logging
 import os
 import sys
 from decimal import Decimal
 
 from fints.client import FinTS3PinTanClient, FinTSClientMode, NeedTANResponse
+
+# Mit FH_LAUT=1 (die Brücke setzt es bei `--laut`) protokolliert python-fints
+# den ganzen Dialog. Ohne das sieht man bei einer Abweisung nur den nackten
+# Ausnahmetext – die Bank schreibt den Grund aber in ihre Rückmeldungen.
+if os.environ.get("FH_LAUT"):
+    logging.basicConfig(level=logging.DEBUG, stream=sys.stderr,
+                        format="  [%(name)s] %(message)s")
 
 
 def sag(*teile):

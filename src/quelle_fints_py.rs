@@ -44,9 +44,23 @@ pub async fn abgleichen(
         bail!("{} fehlt – ohne den Helfer geht FinTS über Python nicht.", skript.display());
     }
 
-    let url = fints::bank_by_blz(&konto.blz)
-        .map(|b| b.url.to_string())
-        .ok_or_else(|| anyhow!("BLZ {} steht nicht im FinTS-Bankverzeichnis.", konto.blz))?;
+    // Eigene Adresse sticht das Verzeichnis – manche BLZ stehen dort ohne URL,
+    // obwohl die Bank sehr wohl einen (gemeinsamen) Server betreibt.
+    let url = if !konto.url.trim().is_empty() {
+        konto.url.trim().to_string()
+    } else {
+        let aus_verzeichnis = fints::bank_by_blz(&konto.blz)
+            .map(|b| b.url.to_string())
+            .unwrap_or_default();
+        if aus_verzeichnis.trim().is_empty() {
+            bail!(
+                "Zur BLZ {} steht im Bankverzeichnis keine FinTS-Adresse. \
+                 Trag sie beim Konto als `url = \"https://…\"` ein.",
+                konto.blz
+            );
+        }
+        aus_verzeichnis
+    };
 
     let zustand = crate::konfig::zustand_ordner().join(format!("{}-fints.bin", konto.id));
 

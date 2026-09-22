@@ -58,6 +58,8 @@ async fn los() -> Result<()> {
     // schickt den eigentlichen Grund in weiteren Rückmeldungen, und die landen
     // dort im Protokoll statt in der Fehlermeldung.
     let laut = args.iter().any(|a| a == "--laut");
+    // Auch der Python-Helfer soll dann sein Protokoll aufmachen
+    if laut { unsafe { std::env::set_var("FH_LAUT", "1") } }
     args.retain(|a| a != "--laut");
     tracing_subscriber::fmt()
         .with_env_filter(
