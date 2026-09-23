@@ -138,7 +138,11 @@ def klient_bauen(interaktiv):
         product_id=umgebung("FH_PRODUKT"),
         product_version="1.0",
         from_data=daten,
-        mode=FinTSClientMode.INTERACTIVE if interaktiv else FinTSClientMode.OFFLINE,
+        # Immer INTERACTIVE. OFFLINE heißt bei python-fints „überhaupt kein
+        # Netz" – gedacht zum Auswerten gespeicherter Daten – und lässt jeden
+        # Bankdialog mit FinTSDialogOfflineError auflaufen. Ob nachgefragt
+        # werden darf, entscheidet unten tan_erledigen(), nicht der Modus.
+        mode=FinTSClientMode.INTERACTIVE,
     )
 
     # Beim ersten Mal das TAN-Verfahren festlegen. Später steckt es im Zustand.
