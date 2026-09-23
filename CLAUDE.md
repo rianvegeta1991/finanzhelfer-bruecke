@@ -18,7 +18,8 @@ kein Web-Projekt, sondern ein Programm, das der Nutzer selbst baut und startet.
 | `src/main.rs` | CLI, HTTP-Server, Endpunkte, Hintergrundschleife |
 | `src/konfig.rs` | `config.toml` lesen und früh prüfen |
 | `src/modell.rs` | die drei Ausgabeformen + `state/`-Ablage |
-| `src/quelle_fints.rs` | FinTS über `fints-rs` (ING, Commerzbank, Sparkassen …) |
+| `src/quelle_fints.rs` | FinTS über `fints-rs` – nur mit `motor = "rust"`, weist ING und Commerzbank ab |
+| `src/quelle_fints_py.rs` + `fints_helfer.py` | FinTS über `python-fints` – **Voreinstellung** |
 | `src/quelle_bitvavo.rs` | Bitvavo, offizielle API, HMAC-SHA256 |
 | `src/quelle_tr.rs` | Trade Republic über das Fremdwerkzeug `pytr` |
 
@@ -77,6 +78,30 @@ Versuch eine neue und wird misstrauisch.
   steht er in einem eigenen `match` mit bloßer Warnung.
 - Standardaufruf ist `python -m pytr`, nicht `pytr`: der Scripts-Ordner von
   Python liegt unter Windows oft nicht im PATH.
+- **`playwright install chromium` muss der Nutzer in seiner eigenen Shell
+  ausführen.** Aus einer Werkzeug-Sitzung heraus installiert, lagen die Dateien
+  zwar am richtigen Ort (geprüft: 211 MB, korrekter Pfad, volle Rechte, auch
+  ohne Sandbox sichtbar), und aus denselben Werkzeugen startete der Browser –
+  aus Bastians Shell kam trotzdem „Executable doesn't exist". Derselbe Befehl
+  aus seiner Shell hat es in Sekunden behoben. Warum, ist ungeklärt; die
+  Konsequenz ist: Installationen, die *sein* Terminal benutzen soll, lässt man
+  ihn anstoßen oder prüft sie wenigstens von dort.
+
+## FinTS über python-fints (`fints_helfer.py`)
+
+- **Immer `FinTSClientMode.INTERACTIVE`.** `OFFLINE` heißt „überhaupt kein
+  Netz" – zum Auswerten gespeicherter Daten – und lässt jeden Bankdialog mit
+  `FinTSDialogOfflineError` auflaufen. Ob nachgefragt werden darf, entscheidet
+  `tan_erledigen()`, nicht der Modus. Dieser Irrtum hat den Hintergrundabgleich
+  lahmgelegt, während die Anmeldung lief.
+- `fetch_tan_mechanisms()` **liefert das gewählte Verfahren zurück**;
+  `get_tan_mechanisms()` filtert zusätzlich nach den erlaubten Funktionen und
+  kann leer bleiben, obwohl eines feststeht. Auf den Rückgabewert verlassen.
+- ING lässt den Lesezugriff mit Sicherheitsfunktion **999 ohne TAN** zu und gibt
+  nur **90 Tage** Umsätze heraus (sagt es selbst: Rückmeldung 3010).
+- stderr des Helfers wird **mitgelesen und zeilenweise durchgereicht**, nicht
+  geerbt: mit `inherit` verschwindet die Meldung, sobald der Aufruf umgeleitet
+  wird – man sieht dann nur „ist ausgestiegen" ohne Grund.
 
 ## Wo es klemmt
 
