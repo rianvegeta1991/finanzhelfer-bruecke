@@ -74,6 +74,18 @@ Versuch eine neue und wird misstrauisch.
   `avgCost` ist der Einstandskurs je Stück – passt direkt.
 - **stdin wird zugenagelt.** Läuft die Anmeldung ab, fragt pytr im Terminal nach
   einer TAN; im Dienst würde das ewig hängen.
+- **Die Anmeldung hält nur ein paar Tage.** In `~/.pytr/cookies.*.txt` stehen
+  `tr_session`, `tr_refresh` und `tr_claims` als reine **Sitzungs-Cookies** – nur
+  `tr_device` gilt ein Jahr. Läuft die Sitzung ab, versucht pytr eine
+  Neuanmeldung, landet bei `input("Code: ")` und stirbt mit
+  `EOFError: EOF when reading a line`. Am 23.09.2026 angemeldet, am 26.09. schon
+  abgelaufen. **Einziger Weg: `finanzhelfer-bruecke anmelden tr` von Hand**, den
+  Code tippt der Nutzer selbst. Nicht automatisieren wollen und **nicht in einer
+  Schleife probieren** – TR sperrt sonst mit 429 für Stunden.
+- Die Brücke liefert bei einem gescheiterten Abruf **weiter ihren letzten guten
+  Stand**. Das ist Absicht, macht Ausfälle aber unsichtbar – deshalb nennt
+  `/status` je Quelle `stand` und `fehler`, und die App zeigt das seit v1.13 im
+  Überblick an. Dieses Feld bitte gefüllt lassen.
 - Ein fehlgeschlagener Depotabruf darf die Buchungen nicht mitreißen – deshalb
   steht er in einem eigenen `match` mit bloßer Warnung.
 - Standardaufruf ist `python -m pytr`, nicht `pytr`: der Scripts-Ordner von
