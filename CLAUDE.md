@@ -79,7 +79,7 @@ Versuch eine neue und wird misstrauisch.
   `tr_device` gilt ein Jahr. Läuft die Sitzung ab, versucht pytr eine
   Neuanmeldung, landet bei `input("Code: ")` und stirbt mit
   `EOFError: EOF when reading a line`. Am 23.09.2026 angemeldet, am 26.09. schon
-  abgelaufen. **Einziger Weg: `finanzhelfer-bruecke anmelden tr` von Hand**, den
+  abgelaufen. **Einziger Weg: `.nmelden.ps1 tr` von Hand**, den
   Code tippt der Nutzer selbst. Nicht automatisieren wollen und **nicht in einer
   Schleife probieren** – TR sperrt sonst mit 429 für Stunden.
 - Die Brücke liefert bei einem gescheiterten Abruf **weiter ihren letzten guten
