@@ -143,3 +143,31 @@ abfragen. Genau so ist die Schnittstelle gegen die echte App verifiziert worden.
 Für den Weg App → Brücke im Browser: `brueckeKonten`, `kontoAbgleichen` und
 `depotAbgleichen` sind in der App global und lassen sich per `javascript_tool`
 direkt aufrufen.
+
+## „Could not find system_id" heißt fast nie, was es sagt
+
+Weist die Bank den Dialog ab, kommt keine Kundensystem-ID zurück, und
+python-fints stirbt mit `ValueError: Could not find system_id`. Der **Grund**
+steht in den Antwortsegmenten – bei der Commerzbank durchgehend 9952 „Das
+Kundenprodukt wird nicht unterstützt". Wer der Ausnahme glaubt, sucht bei der
+Anmeldung statt bei der Produkt-ID.
+
+Deshalb hängt `Mitschrift` (in `fints_helfer.py`) dauerhaft am `fints`-Logger,
+sammelt alle `code`/`text`-Paare und gibt sie im Fehlerfall aus;
+`bankmeldung_deuten()` macht aus 9952/9010/9931 einen brauchbaren Satz.
+Gedruckt wird nur im Fehlerfall, das Protokoll selbst bleibt ohne `--laut` aus.
+
+**Achtung bei deutschen Anführungszeichen in Python-Strings:** „…" mit geradem
+Schlusszeichen beendet das Literal. Immer „…" (U+201E/U+201C) benutzen.
+
+## anmelden.ps1 / anmelden.cmd
+
+`anmelden tr` ist kein Befehl, sondern ein Argument für die exe, und die liegt
+nicht im PATH. Dafür gibt es `anmelden.ps1` (liest die Konten aus der
+config.toml, lässt wählen, ruft die exe mit vollem Pfad auf).
+
+Auf einem frischen Windows ist die Ausführung von .ps1 gesperrt
+(`PSSecurityException`), deshalb liegt `anmelden.cmd` daneben: eine .cmd fällt
+nicht unter die Sperre und startet die .ps1 mit `-ExecutionPolicy Bypass` –
+nur für diesen Aufruf, ohne etwas am System zu ändern. **In der App immer die
+.cmd oder die .ps1 nennen, nie den nackten exe-Namen.**

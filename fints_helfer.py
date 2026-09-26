@@ -24,6 +24,7 @@ Alles Menschenlesbare geht auf stderr.
 import datetime
 import json
 import logging
+import re
 import os
 import sys
 from decimal import Decimal
@@ -36,6 +37,63 @@ from fints.client import FinTS3PinTanClient, FinTSClientMode, NeedTANResponse
 if os.environ.get("FH_LAUT"):
     logging.basicConfig(level=logging.DEBUG, stream=sys.stderr,
                         format="  [%(name)s] %(message)s")
+
+
+class Mitschrift(logging.Handler):
+    """Hört beim Bankdialog mit und merkt sich die Rückmeldungen der Bank.
+
+    Warum: weist die Bank den Dialog ab, bricht python-fints mit
+    `ValueError: Could not find system_id` ab – die Kundensystem-ID fehlt eben,
+    wenn es gar kein Gespräch gab. Der **Grund** steht aber in den
+    Antwortsegmenten, etwa 9952 „Das Kundenprodukt wird nicht unterstützt".
+    Ohne Mitschrift ginge genau der verloren, und man sucht den Fehler bei der
+    Anmeldung statt bei der Produkt-ID.
+
+    Die Meldungen werden nur gesammelt, nicht gedruckt – ausgegeben wird erst
+    im Fehlerfall.
+    """
+
+    PAAR = re.compile(r"code\s*=\s*'(\d{4})'.*?text\s*=\s*'([^']*)'", re.S)
+
+    def __init__(self):
+        super().__init__(level=logging.DEBUG)
+        self.meldungen = []
+
+    def emit(self, record):
+        try:
+            text = record.getMessage()
+        except Exception:                              # noqa: BLE001
+            return
+        for code, satz in self.PAAR.findall(text):
+            paar = (code, satz.strip())
+            if paar not in self.meldungen:
+                self.meldungen.append(paar)
+
+    def ernst(self):
+        """Nur die, die auf einen echten Abbruch hindeuten (9xxx)."""
+        return [p for p in self.meldungen if p[0].startswith("9")]
+
+
+MITSCHRIFT = Mitschrift()
+_fints_log = logging.getLogger("fints")
+_fints_log.setLevel(logging.DEBUG)
+_fints_log.addHandler(MITSCHRIFT)
+
+
+def bankmeldung_deuten():
+    """Aus den Rückmeldungen einen Satz machen, der weiterhilft."""
+    codes = {c for c, _ in MITSCHRIFT.ernst()}
+    if "9952" in codes:
+        return ("Die Bank lehnt die Produkt-ID ab (9952, „Das Kundenprodukt wird nicht "
+                "unterstützt“). Das liegt nicht an PIN oder Anmeldung – die bei der DK "
+                "registrierte Kennung ist in der Datenbank der Bank noch nicht "
+                "freigeschaltet. Da hilft nur warten oder bei der Bank nachfragen.")
+    if "9010" in codes:
+        return ("Die Bank weist den Signaturaufbau zurück (9010). Meist stimmt etwas an "
+                "Benutzerkennung oder URL nicht.")
+    if "9931" in codes or "3931" in codes:
+        return "Die Bank meldet einen gesperrten Zugang. Bitte im Online-Banking nachsehen."
+    return ""
 
 
 def sag(*teile):
@@ -297,5 +355,13 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except Exception as fehler:                       # noqa: BLE001
-        sag(f"Fehler: {type(fehler).__name__}: {fehler}")
+        # Erst das, was die Bank selbst gesagt hat – der Ausnahmetext von
+        # python-fints ist oft nur die Folgeerscheinung.
+        gedeutet = bankmeldung_deuten()
+        if gedeutet:
+            sag(f"Fehler: {gedeutet}")
+        else:
+            sag(f"Fehler: {type(fehler).__name__}: {fehler}")
+        for code, text in MITSCHRIFT.ernst():
+            sag(f"  Bank: {code} {text}")
         sys.exit(1)
