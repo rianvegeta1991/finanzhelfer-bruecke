@@ -171,3 +171,18 @@ Auf einem frischen Windows ist die Ausführung von .ps1 gesperrt
 nicht unter die Sperre und startet die .ps1 mit `-ExecutionPolicy Bypass` –
 nur für diesen Aufruf, ohne etwas am System zu ändern. **In der App immer die
 .cmd oder die .ps1 nennen, nie den nackten exe-Namen.**
+
+## `/abgleich` – sofort statt im Takt
+
+Der Dienst holt alle `abgleich_minuten` (180). Nach einer erneuerten Anmeldung
+ist das zu lang: in der App stünde bis zu drei Stunden weiter die alte Warnung,
+obwohl längst alles läuft. `GET /abgleich[?konto=<id>]` stößt eine Runde sofort
+an und antwortet mit derselben Liste wie `/status`.
+
+Die Runde steckt dafür in `runde(lage, nur)`; Schleife und Endpunkt rufen
+dieselbe Funktion. `Lage.laeuft` ist ein Mutex darum – **zwei gleichzeitige
+Bankdialoge auf demselben Zugang sind der schnellste Weg in eine Sperre**, und
+genau das passierte sonst, wenn jemand anstößt, während die Schleife läuft.
+
+Die App ruft das **nur** beim ausdrücklichen „Konten abrufen" auf, nicht beim
+Start – sonst klopfte jeder App-Start bei allen Banken an.

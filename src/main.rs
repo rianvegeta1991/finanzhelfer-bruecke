@@ -40,6 +40,11 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 struct Lage {
     konfig: Konfig,
     staende: RwLock<HashMap<String, Bestand>>,
+    /// Hält Abgleiche auseinander. Zwei gleichzeitige Bankdialoge auf
+    /// demselben Zugang sind der schnellste Weg in eine Sperre – und genau
+    /// das könnte passieren, wenn jemand `/abgleich` anstößt, während die
+    /// Schleife ohnehin gerade läuft.
+    laeuft: tokio::sync::Mutex<()>,
 }
 
 #[tokio::main]
@@ -265,7 +270,11 @@ async fn dienst(konfig: Konfig) -> Result<()> {
         .filter_map(|h| h.parse().ok())
         .collect();
 
-    let lage = Arc::new(Lage { konfig, staende: RwLock::new(staende) });
+    let lage = Arc::new(Lage {
+        konfig,
+        staende: RwLock::new(staende),
+        laeuft: tokio::sync::Mutex::new(()),
+    });
 
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::list(herkunft))
@@ -277,6 +286,7 @@ async fn dienst(konfig: Konfig) -> Result<()> {
         .route("/umsaetze", get(umsaetze))
         .route("/positionen", get(positionen))
         .route("/status", get(status))
+        .route("/abgleich", get(abgleich_jetzt))
         .route("/selbst", get(selbst))
         .layer(cors)
         .with_state(lage.clone());
@@ -323,25 +333,39 @@ async fn dienst(konfig: Konfig) -> Result<()> {
     Ok(())
 }
 
+/// Eine Abgleichsrunde – über alle Konten oder nur über eines.
+///
+/// Steckt in einer eigenen Funktion, weil sie von zwei Seiten kommt: von der
+/// Schleife im Takt und von `/abgleich`, wenn die App es sofort will.
+async fn runde(lage: &Arc<Lage>, nur: Option<&str>) {
+    let _sperre = lage.laeuft.lock().await;
+    for konto in &lage.konfig.konten {
+        if let Some(z) = nur {
+            if konto.id != z {
+                continue;
+            }
+        }
+        // Noch nicht fertig eingerichtete Konten überspringen, statt bei
+        // jedem Durchlauf dieselbe Meldung zu wiederholen
+        if !lage.konfig.probleme_konto(konto).is_empty() {
+            continue;
+        }
+        match abgleichen(konto, &lage.konfig, false).await {
+            Ok(m) => println!("  {m}"),
+            Err(e) => eprintln!("  ! {}: {e:#}", konto.name),
+        }
+        // Den frischen Stand in den Arbeitsspeicher übernehmen
+        let neu = Bestand::laden(&konto.id);
+        lage.staende.write().await.insert(konto.id.clone(), neu);
+    }
+}
+
 /// Regelmäßiger Abgleich im Hintergrund.
 async fn schleife(lage: Arc<Lage>, minuten: u64) {
     // Beim Start kurz warten: erst soll die App antworten können
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     loop {
-        for konto in &lage.konfig.konten {
-            // Noch nicht fertig eingerichtete Konten überspringen, statt bei
-            // jedem Durchlauf dieselbe Meldung zu wiederholen
-            if !lage.konfig.probleme_konto(konto).is_empty() {
-                continue;
-            }
-            match abgleichen(konto, &lage.konfig, false).await {
-                Ok(m) => println!("  {m}"),
-                Err(e) => eprintln!("  ! {}: {e:#}", konto.name),
-            }
-            // Den frischen Stand in den Arbeitsspeicher übernehmen
-            let neu = Bestand::laden(&konto.id);
-            lage.staende.write().await.insert(konto.id.clone(), neu);
-        }
+        runde(&lage, None).await;
         tokio::time::sleep(std::time::Duration::from_secs(minuten * 60)).await;
     }
 }
@@ -507,8 +531,29 @@ struct StatusZeile {
     fehler: Option<String>,
 }
 
+/// Sofort abgleichen, statt auf den nächsten Takt zu warten.
+///
+/// Ohne das half nach einer erneuerten Anmeldung nur Geduld: der Dienst holt
+/// sonst erst in bis zu drei Stunden wieder, und bis dahin steht in der App
+/// weiter die alte Warnung. Antwort ist dieselbe Liste wie bei `/status` –
+/// die App sieht also unmittelbar, ob es diesmal geklappt hat.
+async fn abgleich_jetzt(
+    State(lage): State<Arc<Lage>>,
+    Query(filter): Query<Filter>,
+    kopf: HeaderMap,
+) -> Antwort<Vec<StatusZeile>> {
+    token_pruefen(&lage, &kopf)?;
+    runde(&lage, filter.konto.as_deref()).await;
+    status_zeilen(&lage).await
+}
+
 async fn status(State(lage): State<Arc<Lage>>, kopf: HeaderMap) -> Antwort<Vec<StatusZeile>> {
     token_pruefen(&lage, &kopf)?;
+    status_zeilen(&lage).await
+}
+
+/// Der Lagebericht selbst – von `/status` und `/abgleich` gleichermaßen.
+async fn status_zeilen(lage: &Arc<Lage>) -> Antwort<Vec<StatusZeile>> {
     let staende = lage.staende.read().await;
     let liste = lage
         .konfig
